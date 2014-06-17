@@ -1,0 +1,9 @@
+
+- Add to the PATH variable the bin location of admindist
+
+- Create a machine list (IPs or names) in etc and copy to /etc
+
+- Run:
+
+$ cluster-fork mkdir -p /etc/admindist/bin
+

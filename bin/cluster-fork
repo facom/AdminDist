@@ -1,0 +1,82 @@
+#!/bin/bash
+machines=$1;shift
+cmd="$@"
+
+#Verifying machines
+if ! echo $machines | grep "machines=" &> /dev/null;then
+    cmd="$machines $cmd"
+    machines="*"
+else
+    machines=$(echo $machines | cut -f 2 -d '=')
+fi
+
+###################################################
+#Configuration
+###################################################
+adminlog="/etc/admindist/log/cmds"
+if [ ! -d $adminlog ];then mkdir -p $adminlog;fi
+cmdlog="$adminlog/cmd-$$"
+
+###################################################
+
+#Usage
+usage="Usage:\n
+\t$(basename $0) [machines=<list-machines>] '<command>'\n
+\t\t<command> Any command\n
+\t\t<list-machines> key to find machines\n\n
+Example: cluster-fork machines=* hostname
+"
+
+#Check options
+if [ -z "$cmd" ];then
+    echo "Error: You must provide a command."
+    echo -e $usage
+    exit 1
+fi
+
+#List of machines
+machfile="/tmp/$$.admin"
+#Convert list of machines into files
+if [ ! -d /etc/machines ];then
+    mkdir -p /etc/machines
+fi
+for machine in $(cat /etc/machines.list)
+do touch /etc/machines/$machine;done
+ls /etc/machines/$machines | awk -F"/" '{print $4}' > $machfile
+machines=$(awk '{printf "%s,",$1}' $machfile)
+echo "$cmd ($machines):" > $cmdlog-success.dat;echo "$cmd ($machines):" > $cmdlog-failed.dat
+
+#Report message
+echo -e "Command to execute:\n\t\033[32m$cmd\033[0m"
+echo -e "Machines:\n\t\033[32m$machines\033[0m"
+
+#Execute commands
+for machine in $(cat $machfile)
+do
+    if ping -c 2 $machine &> /dev/null
+    then
+	#Use nmap
+	#type=$(nmap $machine | grep microsoft)
+	type=""
+	if [ "x$type" = "x" ]
+	then
+	    echo -e "\033[32mExecuting command in $machine...\033[0m"
+	    if ! ssh -x $machine "$cmd";then
+		echo -e "\033[35mExecution failed."
+		echo "$machine" >> $cmdlog-failed.dat
+	    else
+		echo -e "Done."
+		echo "$machine" >> $cmdlog-success.dat
+	    fi
+	else
+	    echo -e "\033[35mMachines $machine run M$ Windows...\033[0m"
+	    echo "$machine" >> $cmdlog-failed.dat
+	fi
+    else
+	echo -e "\033[35mMachines $machine is down...\033[0m"
+	echo "$machine" >> $cmdlog-failed.dat
+    fi
+done
+
+#Delete temporary files
+rm -rf "/tmp/$$.*"

@@ -1,0 +1,63 @@
+#!/bin/bash
+machines=$1;shift
+script="$@"
+
+#Verifying machines
+if ! echo $machines | grep "machines=" &> /dev/null;then
+    script="$machines $script"
+    machines="*"
+else
+    machines=$(echo $machines | cut -f 2 -d '=')
+fi
+machkey=$machines
+
+###################################################
+#Configuration
+###################################################
+adminlog="/etc/admindist/log/scrs"
+if [ ! -d $adminlog ];then mkdir -p $adminlog;fi
+adminbin="/etc/admindist/bin"
+if [ ! -d $adminbin ];then mkdir -p $adminbin;fi
+cmdlog="$adminlog/scr-$$"
+
+###################################################
+
+#Usage
+usage="Usage:\n
+\t$(basename $0) [machines=<list-machines>] <shell-script>\n
+\t\t<shell-script> Shell script to execute\n
+\t\t<list-machines> key to find machines\n\n
+Example: cluster-shell machines=* /root/instala.sh
+"
+
+#Check options
+if [ -z "$script" ];then
+    echo "Error: You must provide a command."
+    echo -e $usage
+    exit 1
+fi
+
+#List of machines
+machfile="/tmp/$$.admin"
+#Convert list of machines into files
+if [ ! -d /etc/machines ];then
+    mkdir -p /etc/machines
+    for machine in $(cat /etc/machines.list)
+    do touch /etc/machines/$machine;done
+fi
+ls /etc/machines/$machines | awk -F"/" '{print $4}' > $machfile
+machines=$(awk '{printf "%s,",$1}' $machfile)
+echo "script ($script):" > $cmdlog-success.dat
+echo "script ($script):" > $cmdlog-failed.dat
+
+#Report message
+dirscr=$(dirname $script)
+script=$(basename $script)
+echo -e "Script to execute:\n\t\033[32m($dirscr/)$script\033[0m"
+echo -e "Machines:\n\t\033[32m$machines\033[0m"
+
+#Copy script
+cluster-copy machines=$machkey $dirscr/$script $adminbin
+
+#Execute script with at
+cluster-fork machines=$machkey "at now < $adminbin/$script"
